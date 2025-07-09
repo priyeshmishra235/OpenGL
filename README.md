@@ -1,2 +1,2 @@
-![Roatating Triangle](Triangle/images/2.png)
-![Roatating Triangle](Triangle/images/4.png)
+![Roatating Triangle](Triangle/Images/2.png)
+![Roatating Triangle](Triangle/Images/4.png)
