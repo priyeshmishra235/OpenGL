@@ -1,0 +1,460 @@
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
+#include <cmath>
+#include <cstring>
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <iostream>
+// Window dimensions
+const GLint WIDTH = 800, HEIGHT = 600;
+const float toRadians = 3.14159265f / 180.0f;
+float curAngle = 0.0f;
+
+// --- OpenGL Object Identifiers ---
+// VAO: Vertex Array Object – stores attribute layout configuration (like
+// position layout). VBO: Vertex Buffer Object – stores actual vertex data on
+// the GPU. shader: ID of the linked shader program used for rendering.
+// uniformModal: Location of the uniform variable `xMove` inside the shader
+// program.
+GLuint VAO, VBO, IBO, shader, uniformModal, uniformProjection;
+
+// --- Triangle Animation State ---
+// direction: whether triangle is currently moving right (true) or left (false).
+// triOffset: current horizontal offset for the triangle position.
+// triMaxoffset: maximum offset the triangle can move left/right before
+// reversing. triIncrement: how much to move triangle on each frame (like
+// speed).
+bool direction = true;
+float triOffset = 0.0f;
+float triMaxoffset = 0.7f;
+float triIncrement = 0.005f;
+
+bool sizeDirection = true;
+float curSize = 0.4f;
+float maxSize = 0.8f;
+float minSize = 0.1f;
+
+// --- Vertex Shader Source Code ---
+// This shader runs once per vertex and determines the final screen-space
+// position. It takes a 3D input position `pos` and applies a scale and
+// translation to it. The scale shrinks the triangle to 40% size in x and y. The
+// translation adds a dynamic horizontal movement via `xMove`.
+//
+// `xMove` is a uniform float – meaning it's a value passed from the CPU side
+// each frame.
+static const char *vShader = "                        \n\
+#version 330                                          \n\
+                                                      \n\
+layout (location = 0) in vec3 pos;                    \n\
+                                                      \n\
+out vec4 vCol;                                        \n\
+uniform mat4 modal;                                   \n\
+uniform mat4 projection;                              \n\
+                                                      \n\
+void main() {                                         \n\
+  gl_Position = projection * modal * vec4(pos,1.0);   \n\
+  vCol = vec4(clamp(pos,0.0f,1.0f),1.0f);             \n\
+}";
+
+// Fragment Shader Code:
+// This shader runs for each pixel (fragment).
+// It sets the output color of the shape to green (RGBA: 0, 1, 0, 1).
+static const char *fShader = "                        \n\
+#version 330                                          \n\
+                                                      \n\
+in vec4 vCol;                                         \n\
+out vec4 color;                                       \n\
+                                                      \n\
+void main(){                                          \n\
+ color = vCol;                                        \n\
+}";
+
+// This function sets up the triangle geometry:
+// It creates a Vertex Array Object (VAO) and Vertex Buffer Object (VBO),
+// sends the triangle's vertex data to the GPU,
+// and configures how OpenGL should read that data.
+void createTriangle() {
+  unsigned int indices[] = {0, 3, 1, 1, 3, 2, 2, 3, 0, 0, 1, 2};
+  // Define the positions of the triangle's 3 vertices.
+  // Each vertex has 3 components: x, y, z.
+  GLfloat vertices[] = {
+      -1.0f, -1.0f, 0.0f, // Vertex 1: bottom-left corner
+      0.0f,  -1.0f, 1.0f, // Vertex 4:
+      1.0f,  -1.0f, 0.0f, // Vertex 2: bottom-right corner
+      0.0f,  1.0f,  0.0f  // Vertex 3: top-center
+  };
+
+  // Create (allocate) 1 Vertex Array Object (VAO) and store its ID in VAO.
+  // The VAO remembers how vertex attributes are set up (like position layout).
+  glGenVertexArrays(1, &VAO);
+
+  // Bind the VAO. All following vertex setup (VBO, attribute pointers)
+  // will now be stored in this VAO.
+  glBindVertexArray(VAO);
+
+  glGenBuffers(1, &IBO);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBO);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices,
+               GL_STATIC_DRAW);
+  // Create (allocate) 1 Vertex Buffer Object (VBO) and store its ID in VBO.
+  // The VBO is used to store the actual vertex data in GPU memory.
+  glGenBuffers(1, &VBO);
+
+  // Bind the VBO to the GL_ARRAY_BUFFER target.
+  // Now this VBO is the "active" one for uploading vertex data.
+  glBindBuffer(GL_ARRAY_BUFFER, VBO);
+
+  // Copy the vertex data (defined in `vertices`) into GPU memory.
+  // - Target: GL_ARRAY_BUFFER (vertex data)
+  // - Size: how many bytes to upload
+  // - Data pointer: actual vertex data in CPU memory
+  // - Usage: GL_STATIC_DRAW means we won’t update this data later (read-only)
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+  // Describe to OpenGL how the vertex data is laid out in memory.
+  // - index 0: refers to layout(location = 0) in the vertex shader
+  // - 3: 3 components per vertex (x, y, z)
+  // - GL_FLOAT: each component is a float
+  // - GL_FALSE: don't normalize the data (we want raw float values)
+  // - 0: stride (how far apart each vertex is in memory) – 0 means tightly
+  // packed
+  // - (void*)0: offset in the buffer where vertex data starts
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+  // Enable the vertex attribute at index 0 (so the shader can read it).
+  glEnableVertexAttribArray(0);
+
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  // Unbind the VAO to prevent further accidental changes.
+  // This is good practice — we'll bind it again before drawing.
+  glBindVertexArray(0);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+
+// Compiles a shader of a given type (vertex or fragment) from source code
+// and attaches it to the provided shader program.
+//
+// Parameters:
+// - theProgram: OpenGL shader program ID to which this shader will be attached.
+// - shaderCode: the actual GLSL source code of the shader.
+// - shaderType: type of shader (GL_VERTEX_SHADER or GL_FRAGMENT_SHADER).
+void AddShader(GLuint theProgram, const char *shaderCode, GLenum shaderType) {
+  // Create a new shader object of the specified type (vertex or fragment).
+  GLuint theShader = glCreateShader(shaderType);
+
+  // Prepare the shader source code to pass to OpenGL.
+  // OpenGL expects an array of strings, even if it's just one.
+  const GLchar *theCode[1];
+  theCode[0] = shaderCode;
+
+  // Prepare the length of the source code.
+  // This is required by OpenGL when supplying the source.
+  GLint codeLength[1];
+  codeLength[0] = strlen(shaderCode);
+
+  // Associate the shader source with the shader object.
+  glShaderSource(theShader, 1, theCode, codeLength);
+
+  // Compile the shader source code into GPU instructions.
+  glCompileShader(theShader);
+
+  // ----- ERROR CHECKING BLOCK -----
+
+  // 'result' will hold whether the compilation succeeded (non-zero) or failed
+  // (0)
+  GLint result = 0;
+
+  // 'eLog' will hold the compiler error message if compilation fails
+  GLchar eLog[1024] = {0};
+
+  // Query the compile status
+  glGetShaderiv(theShader, GL_COMPILE_STATUS, &result);
+
+  // If result is false (0), compilation failed
+  if (!result) {
+    // Retrieve the error log from OpenGL
+    glGetShaderInfoLog(theShader, sizeof(eLog), NULL, eLog);
+
+    // Print an error message with the log to the console
+    std::cout << "Error compiling the " << shaderType << " shader: " << eLog
+              << std::endl;
+
+    // Do not proceed with attaching the failed shader
+    return;
+  }
+
+  // If compilation was successful, attach the compiled shader to the program
+  glAttachShader(theProgram, theShader);
+}
+
+// Creates a complete shader program by compiling and linking vertex and
+// fragment shaders. Also validates the program and checks for errors during
+// each step.
+//
+// This function depends on:
+// - vShader: vertex shader source string
+// - fShader: fragment shader source string
+// - AddShader(): helper function that compiles and attaches individual shaders
+void compileShaders() {
+  // Create a new empty shader program object.
+  // This object acts like a container to which you attach individual shaders
+  // (e.g. vertex shader, fragment shader).
+  //
+  // Think of it like creating an empty C++ project before adding source files.
+  // The ID returned (`shader`) is used to refer to this program in future
+  // OpenGL calls.
+  shader = glCreateProgram();
+
+  // If program creation failed (returns 0), report the error and stop.
+  if (!shader) {
+    std::cout << "Error creating shader" << std::endl;
+    return;
+  }
+
+  // --------------------------------------------
+  // Add and compile the vertex shader
+  // --------------------------------------------
+  //
+  // This calls the AddShader() helper function which:
+  // 1. Creates a vertex shader object (glCreateShader(GL_VERTEX_SHADER))
+  // 2. Sets the shader source to the vShader string (which holds GLSL code)
+  // 3. Compiles the GLSL source into GPU instructions
+  // 4. Checks for compilation errors
+  // 5. Attaches the compiled shader to the 'shader' program
+  //
+  // Why this is needed:
+  // The vertex shader is the first stage of the rendering pipeline.
+  // It processes each vertex and outputs its transformed position.
+  AddShader(shader, vShader, GL_VERTEX_SHADER);
+
+  // --------------------------------------------
+  // Add and compile the fragment shader
+  // --------------------------------------------
+  //
+  // Similar to the vertex shader step, this:
+  // 1. Creates a fragment shader object (glCreateShader(GL_FRAGMENT_SHADER))
+  // 2. Loads the fShader GLSL source string
+  // 3. Compiles it to GPU code
+  // 4. Checks for errors
+  // 5. Attaches it to the same shader program
+  //
+  // The fragment shader runs for each pixel and determines its final color.
+  AddShader(shader, fShader, GL_FRAGMENT_SHADER);
+
+  // ----- Linking Phase -----
+  // We link the attached shaders into a final GPU-executable program.
+  // This step connects outputs from the vertex shader to inputs of the fragment
+  // shader.
+  glLinkProgram(shader);
+
+  // Check if the linking was successful.
+  // Linking errors can happen if outputs/inputs don't match or if there are
+  // logic bugs.
+  GLint result = 0;
+  GLchar eLog[1024] = {0};
+  glGetProgramiv(shader, GL_LINK_STATUS, &result);
+
+  if (!result) {
+    glGetProgramInfoLog(shader, sizeof(eLog), NULL, eLog);
+    std::cout << "Error Linking program: " << eLog << std::endl;
+    return;
+  }
+
+  // ----- Validation Phase -----
+  // OpenGL allows us to validate the program to ensure it can run with the
+  // current GPU state. This checks things like whether all necessary resources
+  // are available and configured.
+  glValidateProgram(shader);
+  glGetProgramiv(shader, GL_VALIDATE_STATUS, &result);
+
+  if (!result) {
+    glGetProgramInfoLog(shader, sizeof(eLog), NULL, eLog);
+    std::cout << "Error Validating program: " << eLog << std::endl;
+    return;
+  }
+
+  // If we've reached this point, the shader program is compiled, linked, and
+  // valid.
+
+  // Now that the shader program is successfully compiled and linked,
+  // retrieve the location of the uniform variable `xMove`.
+  // This location is needed to update the uniform value from the CPU side every
+  // frame. `glGetUniformLocation` returns an integer "handle" used to set the
+  // value later with glUniform1f.
+  //
+  // Why this is necessary:
+  // Uniforms like xMove are defined in your GLSL shader, not in C++.
+  // But to set their values in C++, you need their location, queried via:
+  //
+  // GLint location = glGetUniformLocation(programID, "uniformName");
+  // That location is used every frame to update the uniform:
+  //
+  // glUniform1f(uniformModal, triOffset);
+  //
+  // Always check if the uniform location is -1. That means:
+  // The uniform was not found (e.g. typo), or
+  // It was optimized out by the compiler because it wasn’t used.
+  uniformModal = glGetUniformLocation(shader, "modal");
+  uniformProjection = glGetUniformLocation(shader, "projection");
+}
+
+int main() {
+  // ----------------------------------------------
+  // Initialize GLFW: this sets up the window system and OpenGL context.
+  // GLFW handles window creation, input, and OpenGL context setup across
+  // platforms. If initialization fails (returns 0), we can’t continue.
+  if (!glfwInit()) {
+    std::cout << "GLFW initialization failed" << std::endl;
+
+    // Clean up and exit early
+    glfwTerminate();
+    return 1;
+  }
+
+  // ----------------------------------------------
+  // Configure the version of OpenGL to use.
+  // These hints tell GLFW to request an OpenGL 3.3 Core Profile context.
+
+  // Request OpenGL version 3.3
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+
+  // Ask for the "core profile" – this disables deprecated OpenGL features
+  // (like immediate mode: glBegin/glEnd). Forces modern OpenGL practices.
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+  // Allow forward compatibility:
+  // This removes deprecated functionality and allows newer drivers to work
+  // cleanly, especially important on macOS which requires this for OpenGL 3.2+
+  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+
+  // ----------------------------------------------
+  // Create the actual window with the desired size and title.
+  // Parameters:
+  // - WIDTH, HEIGHT: dimensions of the window
+  // - "GL Test Window": window title
+  // - NULL, NULL: monitor and share parameters (default windowed mode)
+  GLFWwindow *mainWindow =
+      glfwCreateWindow(WIDTH, HEIGHT, "GL Test Window", NULL, NULL);
+
+  // Check if window creation failed.
+  if (!mainWindow) {
+    std::cout << "GLFW window creation failed" << std::endl;
+
+    // Clean up GLFW resources before exiting
+    glfwTerminate();
+    return 1;
+  }
+  // ------------------------------------------------------------
+  // Get actual framebuffer dimensions (in pixels, not screen units).
+  // On high-DPI displays (like Retina), this may be larger than WIDTH/HEIGHT.
+  int bufferWidth, bufferHeight;
+  glfwGetFramebufferSize(mainWindow, &bufferWidth, &bufferHeight);
+
+  // Make the OpenGL context of `mainWindow` the current one.
+  // All OpenGL function calls from now on will affect this window.
+  glfwMakeContextCurrent(mainWindow);
+
+  // Enable experimental GLEW features to get access to modern OpenGL functions.
+  // This is required on many systems, especially when using core profile.
+  glewExperimental = GL_TRUE;
+
+  // Initialize GLEW (loads OpenGL function pointers).
+  // This must be done *after* creating a valid OpenGL context (via GLFW).
+  if (glewInit() != GLEW_OK) {
+    std::cout << "glew init failed" << std::endl;
+
+    // Cleanup if initialization failed
+    glfwDestroyWindow(mainWindow);
+    glfwTerminate();
+    return 1;
+  }
+  glEnable(GL_DEPTH_TEST);
+
+  // ------------------------------------------------------------
+  // Set the size of the rendering area (viewport) within the window.
+  // Parameters: x, y, width, height
+  // (0, 0) sets the origin to the bottom-left corner of the window.
+  glViewport(0, 0, bufferWidth, bufferHeight);
+
+  // ------------------------------------------------------------
+  // Upload geometry to the GPU and compile shaders
+  createTriangle(); // Initializes VAO/VBO and sends triangle vertices to GPU
+  compileShaders(); // Compiles and links vertex + fragment shaders into GPU
+                    // program
+  glm::mat4 projection = glm::perspective(
+      45.0f, (GLfloat)bufferWidth / (GLfloat)bufferHeight, 0.1f, 100.0f);
+  // ------------------------------------------------------------
+  // Main render loop — runs until the user closes the window.
+  while (!glfwWindowShouldClose(mainWindow)) {
+    // Poll events (mouse, keyboard, window events)
+    glfwPollEvents();
+
+    // Update triangle's horizontal offset
+    if (direction) {
+      triOffset += triIncrement; // move right
+    } else {
+      triOffset -= triIncrement; // move left
+    }
+
+    // Reverse direction when offset exceeds maximum range
+    if (fabs(triOffset) >= triMaxoffset) {
+      direction = !direction; // flip movement direction
+    }
+    curAngle += 1.0f;
+    if (curAngle >= 360) {
+      curAngle -= 360;
+    }
+    if (sizeDirection) {
+      curSize += 0.001f;
+    } else {
+      curSize -= 0.001f;
+    }
+    if (curSize >= maxSize || curSize <= minSize) {
+      sizeDirection = !sizeDirection;
+    }
+    // Clear the screen and fill it with yellow (RGBA: 1,1,0,1)
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // Tell OpenGL which shader program to use
+    glUseProgram(shader);
+
+    // Send the current horizontal offset (triOffset) to the shader as a uniform
+    // `uniformModal` is the location of the `xMove` uniform in the shader
+    // program This value gets used in the vertex shader to shift the triangle
+    // left/right
+    // Must call it after binding the shader useing gluUseProgram();
+    glm::mat4 modal = glm::mat4(1.0f); // initialize to Identity matrix
+    //
+    // first scale happens then rotate then translate
+    modal = glm::translate(modal, glm::vec3(0.0f, triOffset, -2.5f));
+    modal =
+        glm::rotate(modal, curAngle * toRadians, glm::vec3(1.0f, 1.0f, 1.0f));
+
+    modal = glm::scale(modal, glm::vec3(0.4f, 0.4f, 1.0f));
+
+    glUniformMatrix4fv(uniformModal, 1, GL_FALSE, glm::value_ptr(modal));
+    glUniformMatrix4fv(uniformProjection, 1, GL_FALSE,
+                       glm::value_ptr(projection));
+
+    // Bind the vertex array so OpenGL knows what geometry to draw
+    glBindVertexArray(VAO);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBO);
+    glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_INT, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    // Unbind VAO and shader program to clean up state (good practice)
+    glBindVertexArray(0);
+    glUseProgram(0);
+
+    // Swap the front and back buffers:
+    // - Front buffer is shown to the screen
+    // - Back buffer is what we just rendered to
+    // Swapping shows the new frame without flickering (double buffering)
+    glfwSwapBuffers(mainWindow);
+  }
+}
