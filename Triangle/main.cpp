@@ -218,24 +218,24 @@ int main() {
     // This object will not rotate — just translated upward and scaled.
     // Matrix stack:
     // - Identity → Translate (up 1.0 in Y) → Scale
-    model = glm::identity<glm::mat4>();
-    model = glm::translate(
-        model, glm::vec3(0.0f, 1.0f,
-                         -2.5f)); // Positioned slightly above the first mesh
-    model = glm::scale(
-        model, glm::vec3(0.4f, 0.4f, 1.0f)); // Same scale but no rotation
-
-    // === 9. Upload updated model matrix for second object ===
-    // You must update uniforms every time they change before a draw call —
-    // they're not cached across draws.
-    glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(uniformProjection, 1, GL_FALSE,
-                       glm::value_ptr(projection));
+    // model = glm::identity<glm::mat4>();
+    // model = glm::translate(
+    //     model, glm::vec3(0.0f, 1.0f,
+    //                      -2.5f)); // Positioned slightly above the first mesh
+    // model = glm::scale(
+    //     model, glm::vec3(0.4f, 0.4f, 1.0f)); // Same scale but no rotation
+    //
+    // // === 9. Upload updated model matrix for second object ===
+    // // You must update uniforms every time they change before a draw call —
+    // // they're not cached across draws.
+    // glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+    // glUniformMatrix4fv(uniformProjection, 1, GL_FALSE,
+    //                    glm::value_ptr(projection));
 
     // === 10. Draw second mesh ===
     // Uses the same shader program and geometry as the first mesh, but
     // transformed differently.
-    meshList[1]->RenderMesh();
+    // meshList[1]->RenderMesh();
 
     // === 11. Optional cleanup: unbind current shader ===
     // This deactivates the current program (no program will be active after
