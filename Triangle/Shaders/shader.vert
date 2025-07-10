@@ -17,6 +17,7 @@ out vec4 vCol;
 
 uniform mat4 model;
 uniform mat4 projection;
+uniform mat4 view;
 // 'model' transforms the object from model space to world space (translation, rotation, scaling)
 // 'projection' transforms the 3D position into clip space (perspective or orthographic projection)
 //
@@ -29,7 +30,7 @@ void main()
 {
     // Transform the vertex position by model → projection
     // This moves the vertex from object space to clip space (standard OpenGL pipeline)
-    gl_Position = projection * model * vec4(pos, 1.0);
+    gl_Position = projection * view * model * vec4(pos, 1.0);
     // Generate a color from position:
     // - This clamps position values between 0.0 and 1.0 to avoid out-of-bounds RGB
     // - Effectively maps x, y, z to R, G, B respectively
@@ -38,4 +39,3 @@ void main()
     // This color will then be interpolated across the triangle
     // and passed to the fragment shader as 'vCol'
 }
-

@@ -1,6 +1,6 @@
 #include <GL/glew.h> // Required for GLuint, gl* function types
 
-#pragma once // Ensure the header is only included once per compilation unit
+#pragma once
 
 // Mesh represents a renderable 3D object made of vertices and indices.
 //

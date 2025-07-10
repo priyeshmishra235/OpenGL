@@ -2,6 +2,7 @@
 // This is where the entire OpenGL application is initialized, shaders and
 // meshes are created, and the render loop is run until the window is closed.
 
+#include <glm/ext/matrix_transform.hpp>
 #include <vector> // Used to store multiple Mesh* and Shader objects dynamically
 
 // GLEW and GLFW are core libraries for OpenGL setup and function management
@@ -15,6 +16,7 @@
 #include <glm/gtc/type_ptr.hpp> // Allows sending glm matrices to shaders via glUniformMatrix4fv
 
 // Our own engine modules that abstract OpenGL setup
+#include "Camera.h"
 #include "Mesh.h" // Handles creation and rendering of geometry (VAO, VBO, IBO)
 #include "Shader.h" // Compiles vertex + fragment shaders and manages uniforms
 #include "Window.h" // Manages GLFW window, context, and framebuffer size
@@ -35,6 +37,10 @@ Window mainWindow;
 std::vector<Mesh *> meshList;
 std::vector<Shader> shaderList;
 
+Camera camera;
+
+GLfloat deltaTime{0.0f};
+GLfloat lastTime{0.0f};
 // Paths to vertex and fragment shader source files
 // These are relative paths pointing to the Shaders/ directory in your project
 // structure
@@ -70,6 +76,47 @@ void CreateObjects() {
       1.0f,  -1.0f, 0.0f, // Vertex 2
       0.0f,  1.0f,  0.0f  // Vertex 3
   };
+  // cube
+  GLfloat cubeVertices[] = {
+      // Front face
+      -1, -1, 1, // 0
+      1, -1, 1,  // 1
+      1, 1, 1,   // 2
+      -1, 1, 1,  // 3
+      // Back face
+      -1, -1, -1, // 4
+      1, -1, -1,  // 5
+      1, 1, -1,   // 6
+      -1, 1, -1   // 7
+  };
+  // Winding order: OpenGL by default assumes counter-clockwise (CCW) vertex
+  // order for front-facing triangles.
+  // Each triangle is defined in CCW order when looking at the face from outside
+  // the cube.
+  //
+  // Front face
+  // 0, 1, 2,  // bottom-left → bottom-right → top-right (CCW)
+  // 0, 2, 3   // bottom-left → top-right → top-left (CCW)
+  //
+  //   7--------6
+  //  /|       /|
+  // 3--------2 |
+  // | |      | |
+  // | 4------|-5
+  // |/       |/
+  // 0--------1
+  unsigned int cubeIndices[] = {// Front
+                                0, 1, 2, 0, 2, 3,
+                                // Back
+                                5, 4, 7, 5, 7, 6,
+                                // Left
+                                4, 0, 3, 4, 3, 7,
+                                // Right
+                                1, 5, 6, 1, 6, 2,
+                                // Top
+                                3, 2, 6, 3, 6, 7,
+                                // Bottom
+                                4, 5, 1, 4, 1, 0};
 
   // Allocate and construct a Mesh object dynamically on the heap
   // Uploads vertex and index data to the GPU
@@ -78,11 +125,16 @@ void CreateObjects() {
                    12);     // 12 floats (4 vertices), 12 indices
   meshList.push_back(obj1); // Store pointer in mesh list for later drawing
 
+  // create a 2d rectangle
+  Mesh *cube = new Mesh();
+  cube->CreateMesh(cubeVertices, cubeIndices, 24, 36);
+  meshList.push_back(cube);
+
   // Create another mesh using the same geometry (e.g., to draw twice at
   // different positions)
-  Mesh *obj2 = new Mesh();
-  obj2->CreateMesh(vertices, indices, 12, 12);
-  meshList.push_back(obj2);
+  // Mesh *obj2 = new Mesh();
+  // obj2->CreateMesh(vertices, indices, 12, 12);
+  // meshList.push_back(obj2);
 }
 
 // CreateShaders() compiles vertex + fragment shaders from source files
@@ -121,11 +173,14 @@ int main() {
   // pipeline.
   CreateShaders();
 
+  camera = Camera(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
+                  -90.0f, 0.0f, 5.0f, 0.5f);
+
   // === 4. Declare uniform variable locations ===
   // These will store GPU-side locations of the 'model' and 'projection'
   // matrices in your vertex shader. These locations are retrieved by name and
   // used to send transformation data to the shader.
-  GLuint uniformModel, uniformProjection;
+  GLuint uniformModel{0}, uniformProjection{0}, uniformView{0};
 
   // === 5. Setup projection matrix ===
   // This projection matrix converts world-space coordinates into clip space
@@ -145,10 +200,17 @@ int main() {
                        0.1f, 100.0f);
   // Loop until window is closed
   while (!mainWindow.getShouldClose()) {
+
+    // delta time calculation
+    GLfloat now = glfwGetTime();
+    deltaTime = now - lastTime;
+    lastTime = now;
     // === 1. Poll events from window system ===
     // This checks for events like key presses, mouse input, window close, etc.
     // It must be called every frame to keep the window responsive.
     glfwPollEvents();
+    camera.keyControl(mainWindow.getsKeys(), deltaTime);
+    camera.mouseControl(mainWindow.getXChange(), mainWindow.getYChange());
 
     // === 2. Clear the color and depth buffers ===
     // glClearColor sets the background color of the screen.
@@ -171,6 +233,7 @@ int main() {
     // each draw call must set them correctly.
     uniformModel = shaderList[0].GetModelLocation();
     uniformProjection = shaderList[0].GetProjectionLocation();
+    uniformView = shaderList[0].GetViewLocation();
 
     // === 5. Update rotation angle (for animation) ===
     // This simulates rotation over time by increasing the angle every frame.
@@ -191,7 +254,7 @@ int main() {
     glm::mat4 model = glm::identity<glm::mat4>();
 
     // Move object away from camera so it's visible in view frustum
-    model = glm::translate(model, glm::vec3(0.0f, 0.0f, -2.5f));
+    model = glm::translate(model, glm::vec3(-0.8f, 0.0f, -2.5f));
 
     // Apply rotation around arbitrary axis (1,1,1) using current angle (in
     // radians)
@@ -208,6 +271,8 @@ int main() {
     // Upload projection matrix to GPU (used to convert to clip space)
     glUniformMatrix4fv(uniformProjection, 1, GL_FALSE,
                        glm::value_ptr(projection));
+    glUniformMatrix4fv(uniformView, 1, GL_FALSE,
+                       glm::value_ptr(camera.calculateViewMatrix()));
     // === 7. Draw first mesh (rotating diamond) ===
     // This object is animated — rotation is applied each frame via the model
     // matrix above. RenderMesh() binds its VAO and draws it using
@@ -241,6 +306,15 @@ int main() {
     // This deactivates the current program (no program will be active after
     // this). Technically optional in small apps, but good practice for state
     // management in engines.
+
+    model = glm::identity<glm::mat4>();
+    model = glm::translate(model, glm::vec3(1.5f, 0.0f, -5.0f));
+    model = glm::scale(model, glm::vec3(0.8f, 0.8f, 0.8f));
+    model = glm::rotate(model, 2 * curAngle * toRadians, glm::vec3(1, -1, -1));
+    glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(uniformProjection, 1, GL_FALSE,
+                       glm::value_ptr(projection));
+    meshList[1]->RenderMesh();
     glUseProgram(0);
 
     // === 12. Swap front and back buffers ===

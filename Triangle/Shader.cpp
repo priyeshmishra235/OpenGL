@@ -175,7 +175,7 @@ void Shader::compileShaders(const char *vShaderCode, const char *fShaderCode) {
   // shader variables set per-draw call.
   uniformModel = glGetUniformLocation(shader, "model");
   uniformProjection = glGetUniformLocation(shader, "projection");
-
+  uniformView = glGetUniformLocation(shader, "view");
   // Note: if `model` or `projection` is not used in your GLSL code, the
   // compiler may optimize it away. In that case, glGetUniformLocation will
   // return -1.

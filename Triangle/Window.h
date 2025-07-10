@@ -43,6 +43,10 @@ public:
   // button or pressed ESC). Typically used in the main render loop.
   bool getShouldClose() { return glfwWindowShouldClose(mainWindow); }
 
+  bool *getsKeys() { return keys; }
+  GLfloat getXChange();
+  GLfloat getYChange();
+
   // Swaps the front and back buffers — this displays the next rendered frame on
   // the screen. Should be called once per frame at the end of the render loop.
   void swapBuffers() { glfwSwapBuffers(mainWindow); }
@@ -62,4 +66,14 @@ private:
   // On high-DPI displays, this can differ from width/height (e.g., 800x600
   // window → 1600x1200 framebuffer).
   GLint bufferWidth, bufferHeight;
+
+  bool keys[1024];
+  GLfloat lastx, lasty;
+  GLfloat xChange, yChange;
+  bool mouseFirstMoved;
+
+  void createCallbacks();
+  static void handleKeys(GLFWwindow *window, int key, int code, int action,
+                         int mode);
+  static void handleMouse(GLFWwindow *window, double xPos, double yPos);
 };

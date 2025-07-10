@@ -1,4 +1,5 @@
 #include "Window.h" // Include the class declaration
+#include <GLFW/glfw3.h>
 
 // Default constructor: sets a standard window size and initializes internal
 // state. These values are later used during GLFW window creation in
@@ -12,6 +13,10 @@ Window::Window() {
   bufferHeight = 0;
 
   mainWindow = 0; // Null pointer — window will be created later by initialize()
+
+  for (size_t i{0}; i < 1024; i++) {
+    keys[i] = 0;
+  }
 }
 
 // Parameterized constructor: allows the user to define a custom window size.
@@ -25,6 +30,9 @@ Window::Window(GLint windowWidth, GLint windowHeight) {
   bufferHeight = 0;
 
   mainWindow = 0; // Will point to GLFWwindow once it's created
+  for (size_t i{0}; i < 1024; i++) {
+    keys[i] = 0;
+  }
 }
 
 int Window::initialize() {
@@ -73,6 +81,10 @@ int Window::initialize() {
   // All subsequent OpenGL commands will affect this context
   glfwMakeContextCurrent(mainWindow);
 
+  // handle key+mouse input
+  createCallbacks();
+  // disable the mouse in viewport but still register its input
+  glfwSetInputMode(mainWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
   // Step 6: Prepare GLEW to initialize OpenGL function pointers
   // This must be set to TRUE to get access to newer OpenGL functions
   glewExperimental = GLU_TRUE;
@@ -94,9 +106,55 @@ int Window::initialize() {
 
   // Step 8: Configure OpenGL's viewport to match framebuffer size
   // Maps normalized device coordinates [-1, 1] to the actual pixel region
-  glViewport(0, 0, bufferWidth, bufferHeight);
+  glViewport(0, 0, bufferWidth * 1.5, bufferHeight * 1.5);
 
+  glfwSetWindowUserPointer(mainWindow, this);
   return 0; // Success
+}
+void Window::createCallbacks() {
+  glfwSetKeyCallback(mainWindow, handleKeys);
+  glfwSetCursorPosCallback(mainWindow, handleMouse);
+}
+
+GLfloat Window::getXChange() {
+  GLfloat theChange = xChange;
+  xChange = 0.0f;
+  return theChange;
+}
+GLfloat Window::getYChange() {
+  GLfloat theChange = yChange;
+  yChange = 0.0f;
+  return theChange;
+}
+
+void Window::handleKeys(GLFWwindow *window, int key, int code, int action,
+                        int mode) {
+  Window *theWindow = static_cast<Window *>(glfwGetWindowUserPointer(window));
+  if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+    glfwSetWindowShouldClose(window, GL_TRUE);
+  }
+  if (key >= 0 && key <= 1024) {
+    if (action == GLFW_PRESS) {
+      theWindow->keys[key] = true;
+      // std::cout << "Pressed: " << key << std::endl;
+    } else if (action == GLFW_RELEASE) {
+      theWindow->keys[key] = false;
+      // std::cout << "Released: " << key << std::endl;
+    }
+  }
+}
+void Window::handleMouse(GLFWwindow *window, double xPos, double yPos) {
+  Window *theWindow = static_cast<Window *>(glfwGetWindowUserPointer(window));
+  if (theWindow->mouseFirstMoved) {
+    theWindow->lastx = xPos;
+    theWindow->lasty = yPos;
+    theWindow->mouseFirstMoved = false;
+  }
+  theWindow->xChange = xPos - theWindow->lastx;
+  theWindow->yChange = theWindow->lasty - yPos;
+
+  theWindow->lastx = xPos;
+  theWindow->lasty = yPos;
 }
 // Destructor: called automatically when a `Window` object goes out of scope.
 //

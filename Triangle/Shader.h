@@ -50,6 +50,7 @@ public:
   // object-space vertices into world space or view space using a model matrix
   // (mat4).
   GLuint GetModelLocation() { return this->uniformModel; }
+  GLuint GetViewLocation() { return this->uniformView; }
 
   // Returns the uniform location of the "projection" matrix in the shader
   // program. This allows the application to pass the projection matrix
@@ -77,6 +78,7 @@ private:
   // via glUniformMatrix4fv.
   GLuint uniformModel;
   GLuint uniformProjection;
+  GLuint uniformView;
 
   // Reads a text file (typically GLSL shader source) from the given path and
   // returns it as a string. This helper is used internally by CreateFromFiles
