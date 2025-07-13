@@ -77,4 +77,10 @@ void Shader::compileShaders(const char *vShaderCode, const char *fShaderCode) {
   uniformModel = glGetUniformLocation(shader, "model");
   uniformProjection = glGetUniformLocation(shader, "projection");
   uniformView = glGetUniformLocation(shader, "view");
+  uniformAmbientColor = glGetUniformLocation(shader, "directionalLight.color");
+  uniformAmbientIntensity =
+      glGetUniformLocation(shader, "directionalLight.ambientIntensity");
+  uniformDirection = glGetUniformLocation(shader, "directionalLight.direction");
+  uniformDiffuseIntensity =
+      glGetUniformLocation(shader, "directionalLight.diffuseIntensity");
 }

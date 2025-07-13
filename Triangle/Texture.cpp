@@ -19,7 +19,7 @@ void Texture::LoadTexture() {
   unsigned char *texData =
       stbi_load(fileLocation, &width, &height, &bitDepth, 0);
   if (!texData) {
-    std::cout << "Failed to find" << fileLocation << std::endl;
+    std::cout << "Failed to find: " << fileLocation << std::endl;
   }
   glGenTextures(1, &textureID);
   glBindTexture(GL_TEXTURE_2D, textureID);

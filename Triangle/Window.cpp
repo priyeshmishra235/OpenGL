@@ -1,4 +1,5 @@
 #include "Window.h"
+
 #include <GLFW/glfw3.h>
 Window::Window() {
   width = 800;
@@ -46,7 +47,7 @@ int Window::initialize() {
   glfwMakeContextCurrent(mainWindow);
   createCallbacks();
   glfwSetInputMode(mainWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-  glewExperimental = GLU_TRUE;
+  glewExperimental = GL_TRUE;
   GLenum error = glewInit();
   if (error != GLEW_OK) {
     std::cerr << "GLEW initialization failed...\n";
