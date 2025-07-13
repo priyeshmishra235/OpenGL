@@ -3,6 +3,7 @@
 #include <GL/gl.h>
 #include <GL/glext.h>
 #include <GLFW/glfw3.h>
+#include <cmath>
 #include <iostream>
 
 // ─── globals ───────────────────────────────────────────────────────────────
@@ -20,10 +21,10 @@ void framebufferSizeCallback(GLFWwindow *window, int width, int height) {
   glViewport(0, 0, width, height);
 }
 float vertices[] = {
-    // positions         // colors
-    0.5f,  -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, // bottom right
-    -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, // bottom left
-    0.0f,  0.5f,  0.0f, 0.0f, 0.0f, 1.0f  // top
+    // positions
+    0.5f,  -0.5f, 0.0f, // bottom right
+    -0.5f, -0.5f, 0.0f, // bottom left
+    0.0f,  0.5f,  0.0f, // top
 };
 // float vertices[] = {
 //     // Triangle 0  ↑
@@ -102,11 +103,19 @@ int main() {
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
+    float timeValue = glfwGetTime();
+    float offset = (tan(timeValue)) / 2.0f;
+
     ourShader.use();
     // after the shader program in started we set the
 
     glBindVertexArray(VAO); // binds VBO + EBO + attribs as stored
-    glDrawArrays(GL_TRIANGLES, 0, 15);
+    //
+    ourShader.setFloat("offset", offset);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+
+    ourShader.setFloat("offset", -offset);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
     // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     // glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     // check and call events and swap the buffers
